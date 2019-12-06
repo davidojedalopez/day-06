@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "day-06"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1uww4qcwehqk"
+s3_prefix = "day-06"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"

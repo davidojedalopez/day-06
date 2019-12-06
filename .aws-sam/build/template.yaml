@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'day-06
+
+  SAM Template for day-06
+
+  '
+Globals:
+  Function:
+    Timeout: 3
+Resources:
+  SchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: SchedulerFunction
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+      Role:
+        Fn::GetAtt:
+        - LambdaNotifierRole
+        - Arn
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN:
+            Ref: TaskTimerStateMachine
+      Events:
+        schedule:
+          Type: Api
+          Properties:
+            Path: /schedule
+            Method: post
+  NotifierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: NotifierFunction
+      Handler: app.lambdaHandler
+      Runtime: nodejs12.x
+  LambdaNotifierRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AWSLambdaExecute
+      Policies:
+      - PolicyName: StartExecutionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - states:SendTaskSuccess
+            - states:SendTaskFailure
+            - states:UpdateStateMachine
+            - states:DeleteStateMachine
+            - states:StartExecution
+            - states:DeleteActivity
+            - states:StopExecution
+            - states:SendTaskHeartbeat
+            - states:GetActivityTask
+            Resource: '*'
+  StatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: states.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: StatesExecutionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource: '*'
+  TaskTimerStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString:
+        Fn::Sub:
+        - "{\n  \"Comment\": \"An example of the Amazon States Language for scheduling\
+          \ a task.\",\n  \"StartAt\": \"Wait for Timestamp\",\n  \"States\": {\n\
+          \    \"Wait for Timestamp\": {\n      \"Type\": \"Wait\",\n      \"SecondsPath\"\
+          : \"$.seconds\",\n      \"Next\": \"Send message to Basecamp\"\n    },\n\
+          \    \"Send message to Basecamp\": {\n      \"Type\": \"Task\",\n      \"\
+          Resource\": \"${notifierFunction}\",\n      \"Retry\" : [\n        {\n \
+          \         \"ErrorEquals\": [ \"States.ALL\" ],\n          \"IntervalSeconds\"\
+          : 1,\n          \"MaxAttempts\": 3,\n          \"BackoffRate\": 2.0\n  \
+          \      }\n      ],\n      \"End\": true\n    }\n  }\n}"
+        - notifierFunction:
+            Fn::GetAtt:
+            - NotifierFunction
+            - Arn
+      RoleArn:
+        Fn::GetAtt:
+        - StatesExecutionRole
+        - Arn
+Outputs:
+  SchedulerApi:
+    Description: API Gateway endpoint URL for Prod stage for scheduler app
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/schedule
